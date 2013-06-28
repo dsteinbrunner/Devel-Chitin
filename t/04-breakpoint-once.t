@@ -7,6 +7,17 @@ for(my $i = 0; $i < 10; $i++) {
 }
 $DB::single = 1;
 9;
+{
+#package DB;
+our(@dbline,%dbline);
+local(*dbline) = $main::{'_<'.__FILE__};
+for (my $i = 0; $i <= $#dbline; $i++) {
+no warnings;
+    print "$i";
+    print $dbline{$i} ? " *bp" : "";
+    print ": $dbline[$i]";
+}
+}
 
 use Test::More tests => 5;
 use lib 't/lib';

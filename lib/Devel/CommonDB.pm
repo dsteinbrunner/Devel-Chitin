@@ -11,6 +11,7 @@ use Devel::CommonDB::Eval;
 use Devel::CommonDB::Stack;
 use Devel::CommonDB::Location;
 use Devel::CommonDB::Exception;
+use Devel::CommonDB::SourceCache;
 
 # lexicals shared between the interface package and the DB package
 my(%attached_clients,
@@ -426,7 +427,11 @@ sub _execute_actions {
 sub DB {
     return if (!$ready or $debugger_disabled);
 
-    my($package, $filename, $line) = caller;
+    my($package, $filename, $line) = caller(0);
+    if (my $cached = Devel::CommonDB::SourceCache->get($filename)) {
+        $line = $cached->canon_line($line);
+    }
+
     my(undef, undef, undef, $subroutine) = caller(1);
     if ($package eq 'DB::fake') {
         $package = 'main';

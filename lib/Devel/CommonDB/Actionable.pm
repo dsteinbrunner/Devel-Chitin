@@ -3,9 +3,11 @@ package Devel::CommonDB::Actionable;
 use strict;
 use warnings;
 
-use Digest::MD5 qw(md5);
+#use Digest::MD5 qw(md5);
 use List::Util;
 use Carp;
+
+use Devel::CommonDB::SourceCache;
 
 sub new {
     my $class = shift;
@@ -24,6 +26,18 @@ sub __required {
     do { defined($params{$_}) || Carp::croak("$_ is a required param") }
         foreach @$required_params;
     return %params;
+}
+
+sub _canon_line {
+    my($file, $line) = @_;
+    my $cached = Devel::CommonDB::SourceCache->get($file);
+    return $cached ? $cached->canon_line($line) : $line;
+}
+
+sub _debugger_line {
+    my($file, $line) = @_;
+    my $cached = Devel::CommonDB::SourceCache->get($file);
+    return $cached ? $cached->debugger_line($line) : $line;
 }
 
 sub get {
@@ -45,7 +59,8 @@ sub get {
               grep { $_ }      # only lines with something
               values %dbline;  # All action/breakpoint data for this file
     } else {
-        my $line = $params{line};
+        my $line = _debugger_line($params{file}, $params{line});
+
         @candidates = ($dbline{$line} && $dbline{$line}->{$type})
                     ? @{ $dbline{$line}->{$type}}
                     : ();
@@ -62,25 +77,39 @@ sub get {
 sub _insert {
     my $self = shift;
 
+print "Inserting $self at line ",$self->line,"\n";
+    my $line = _debugger_line($self->file, $self->line);
+print "  line corrected to $line\n";
+
     # Setting items in the breakpoint hash only gets
     # its magical DB-stopping abilities if you're in
     # pacakge DB.  Otherwise, you can alter the breakpoint
     # data, other users will see them, but the debugger
     # won't stop
+#    my $bp_info;
+#    {package DB;
+#    local(*dbline) = $main::{'_<' . $self->file};
+#    our %dbline;
+#
+#    #my $bp_info = $dbline{$line} ||= {};
+#    $bp_info = $dbline{$line} ||= {};
+#}
     package DB;
-    our %dbline;
     local(*dbline) = $main::{'_<' . $self->file};
+    our %dbline;
+    $dbline{$line} = 1;
 
-    my $bp_info = $dbline{$self->line} ||= {};
-    my $type = $self->type;
-    $bp_info->{$type} ||= [];
-    push @{$bp_info->{$type}}, $self;
+#    my $type = $self->type;
+#    push @{$bp_info->{$type}}, $self;
+
+    #my $actionable = $bp_info->{$type} ||= [];
+    #push @$actionable, $self;
 }
 
-sub _id {
-    my $self = shift;
-    md5(join('', @$self{'file', 'line', 'code'}, $self->type));
-}
+#sub _id {
+#    my $self = shift;
+#    md5(join('', @$self{'file', 'line', 'code'}, $self->type));
+#}
 
 sub delete {
     my $self = shift;
@@ -94,6 +123,8 @@ sub delete {
         my %params = __required([qw(file line code type)], @_);
         ($file, $line, $code, $type) = @params{'file','line','code','type'};
     }
+
+    $line = _debugger_line($file, $line);
 
     our %dbline;
     local(*dbline) = $main::{'_<' . $file};
